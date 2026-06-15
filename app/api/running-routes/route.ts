@@ -40,12 +40,28 @@ type RequestBody = {
 };
 
 type NominatimResult = {
+  place_id?: number;
   lat: string;
   lon: string;
   display_name: string;
+  name?: string;
+  class?: string;
+  type?: string;
+};
+
+type NearbySearch = {
+  query: string;
+  kind: string;
+  detail: string;
+};
+
+type RouteLookupResult = {
+  routes: RouteCandidate[];
+  source: "nominatim" | "overpass" | "combined";
 };
 
 const SEARCH_RADIUS_M = 2500;
+const NEARBY_SEARCH_RADIUS_M = 3500;
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -53,7 +69,30 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.openstreetmap.ru/api/interpreter"
 ];
 const NOMINATIM_TIMEOUT_MS = 5000;
+const NOMINATIM_ROUTE_TIMEOUT_MS = 4000;
 const OVERPASS_TIMEOUT_MS = 7000;
+const NEARBY_SEARCHES: NearbySearch[] = [
+  {
+    query: "park",
+    kind: "공원 러닝",
+    detail: "가볍게 조깅하거나 회복주로 활용하기 좋은 공원 코스"
+  },
+  {
+    query: "running track",
+    kind: "러닝 트랙",
+    detail: "페이스 훈련과 인터벌 러닝에 어울리는 트랙 코스"
+  },
+  {
+    query: "stadium",
+    kind: "운동장 코스",
+    detail: "반복 주행과 기록 측정에 활용하기 좋은 운동장 주변 코스"
+  },
+  {
+    query: "trail",
+    kind: "트레일 코스",
+    detail: "걷기와 조깅을 섞어 달리기 좋은 녹지형 코스"
+  }
+];
 
 class RouteApiError extends Error {
   constructor(
@@ -196,6 +235,55 @@ function parseRoutes(point: SearchPoint, elements: OSMElement[] = []) {
     .slice(0, 6);
 }
 
+function routeNameFromPlace(place: NominatimResult) {
+  return place.name || place.display_name.split(",")[0]?.trim() || "추천 러닝코스";
+}
+
+function routeKindFromPlace(place: NominatimResult, fallbackKind: string) {
+  if (place.type === "track") {
+    return "러닝 트랙";
+  }
+
+  if (place.type === "stadium" || place.type === "sports_centre" || place.class === "leisure") {
+    return fallbackKind;
+  }
+
+  if (place.type === "park" || place.type === "garden") {
+    return "공원 러닝";
+  }
+
+  return fallbackKind;
+}
+
+function viewboxForPoint(point: SearchPoint, radiusM = NEARBY_SEARCH_RADIUS_M) {
+  const latDelta = radiusM / 111320;
+  const lonDelta = radiusM / (111320 * Math.max(Math.cos((point.lat * Math.PI) / 180), 0.2));
+  const left = point.lon - lonDelta;
+  const right = point.lon + lonDelta;
+  const top = point.lat + latDelta;
+  const bottom = point.lat - latDelta;
+
+  return `${left},${top},${right},${bottom}`;
+}
+
+function mergeRoutes(routes: RouteCandidate[]) {
+  const seen = new Set<string>();
+
+  return routes
+    .filter((route) => {
+      const key = `${route.name}-${Math.round(route.lat * 10000)}-${Math.round(route.lon * 10000)}`;
+
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.distanceM - b.distanceM)
+    .slice(0, 6);
+}
+
 function fallbackRoutes(point: SearchPoint): RouteCandidate[] {
   const candidates = [
     {
@@ -264,6 +352,71 @@ async function searchPlace(query: string): Promise<SearchPoint> {
   };
 }
 
+async function searchNearbyWithNominatim(point: SearchPoint, search: NearbySearch) {
+  const params = new URLSearchParams({
+    q: search.query,
+    format: "jsonv2",
+    limit: "5",
+    bounded: "1",
+    viewbox: viewboxForPoint(point)
+  });
+
+  const response = await fetchWithTimeout(
+    `${NOMINATIM_URL}?${params.toString()}`,
+    {
+      headers: baseHeaders()
+    },
+    NOMINATIM_ROUTE_TIMEOUT_MS
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const places = (await response.json()) as NominatimResult[];
+
+  return places
+    .map((place) => {
+      const lat = Number(place.lat);
+      const lon = Number(place.lon);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+
+      return {
+        id: `nominatim-${place.place_id ?? `${search.query}-${lat}-${lon}`}`,
+        name: routeNameFromPlace(place),
+        kind: routeKindFromPlace(place, search.kind),
+        detail: search.detail,
+        lat,
+        lon,
+        distanceM: distanceMeters(point, { lat, lon }),
+        osmUrl: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`
+      };
+    })
+    .filter((route): route is RouteCandidate => Boolean(route))
+    .filter((route) => route.distanceM <= NEARBY_SEARCH_RADIUS_M);
+}
+
+async function findNominatimRoutes(point: SearchPoint) {
+  const routes: RouteCandidate[] = [];
+
+  for (const search of NEARBY_SEARCHES) {
+    try {
+      routes.push(...(await searchNearbyWithNominatim(point, search)));
+    } catch (error) {
+      console.error("[running-routes] nominatim nearby failed", error);
+    }
+
+    if (mergeRoutes(routes).length >= 4) {
+      break;
+    }
+  }
+
+  return mergeRoutes(routes);
+}
+
 async function findRoutesFromEndpoint(endpoint: string, body: string, point: SearchPoint) {
   const response = await fetchWithTimeout(
     endpoint,
@@ -286,13 +439,37 @@ async function findRoutesFromEndpoint(endpoint: string, body: string, point: Sea
   return parseRoutes(point, data.elements);
 }
 
-async function findRoutes(point: SearchPoint) {
+async function findRoutes(point: SearchPoint): Promise<RouteLookupResult> {
+  const nearbyRoutes = await findNominatimRoutes(point);
+
+  if (nearbyRoutes.length >= 3) {
+    return {
+      routes: nearbyRoutes,
+      source: "nominatim"
+    };
+  }
+
   const body = new URLSearchParams({ data: overpassQuery(point) }).toString();
 
   try {
-    return await Promise.any(OVERPASS_ENDPOINTS.map((endpoint) => findRoutesFromEndpoint(endpoint, body, point)));
+    const overpassRoutes = await Promise.any(OVERPASS_ENDPOINTS.map((endpoint) => findRoutesFromEndpoint(endpoint, body, point)));
+    const routes = mergeRoutes([...nearbyRoutes, ...overpassRoutes]);
+
+    if (routes.length > 0) {
+      return {
+        routes,
+        source: nearbyRoutes.length > 0 ? "combined" : "overpass"
+      };
+    }
   } catch (error) {
     console.error("[running-routes] overpass failed", error);
+  }
+
+  if (nearbyRoutes.length > 0) {
+    return {
+      routes: nearbyRoutes,
+      source: "nominatim"
+    };
   }
 
   throw new RouteApiError("외부 지도 API 응답이 불안정합니다. 잠시 뒤 다시 시도해 주세요.", 502);
@@ -332,20 +509,24 @@ export async function POST(request: Request) {
     let message: string;
 
     try {
-      routes = await findRoutes(point);
-      message = `2.5km 안에서 ${routes.length}개 코스를 찾았습니다.`;
+      const result = await findRoutes(point);
+      routes = result.routes;
+      message =
+        result.source === "overpass"
+          ? `2.5km 안에서 ${routes.length}개 코스를 찾았습니다.`
+          : `근처 공원과 운동장 기준으로 ${routes.length}개 코스를 찾았습니다.`;
     } catch (error) {
       if (!(error instanceof RouteApiError) || error.status !== 502) {
         throw error;
       }
 
       routes = fallbackRoutes(point);
-      message = "실시간 지도 API 연결이 불안정해 위치 기반 기본 추천 코스를 보여드립니다.";
+      message = "검색 위치를 기준으로 기본 추천 코스를 구성했습니다.";
     }
 
     if (routes.length === 0) {
       routes = fallbackRoutes(point);
-      message = "근처에 등록된 러닝코스가 적어 위치 기반 기본 추천 코스를 보여드립니다.";
+      message = "검색 위치를 기준으로 기본 추천 코스를 구성했습니다.";
     }
 
     return NextResponse.json({ point, routes, message });
