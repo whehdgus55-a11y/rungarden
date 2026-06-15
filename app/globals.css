@@ -912,3 +912,191 @@ body {
   }
 }
 
+
+/* Plant photos and route recommendations */
+.plant-photo-frame {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.plant-stage-photo,
+.select-card-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.plant-photo-frame figcaption {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  padding: 5px 7px;
+  color: #ffffff;
+  background: rgba(17, 24, 39, 0.78);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.photo-select-card {
+  position: relative;
+  min-height: 238px;
+  overflow: hidden;
+  padding-top: 112px;
+}
+
+.photo-select-card .plant-dot {
+  position: absolute;
+  top: 92px;
+  left: 18px;
+  width: 38px;
+  height: 38px;
+  margin: 0;
+  border: 3px solid #ffffff;
+  box-shadow: 0 8px 16px rgba(17, 24, 39, 0.18);
+}
+
+.select-card-photo {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 112px;
+  filter: saturate(1.08);
+}
+
+.route-panel {
+  border-color: rgba(14, 165, 233, 0.22);
+}
+
+.route-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.route-search label {
+  display: grid;
+  gap: 8px;
+  font-weight: 900;
+}
+
+.route-search label span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.route-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  color: #0f3f46;
+  background: #ecfeff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.route-status svg {
+  color: var(--sky);
+  flex: 0 0 auto;
+}
+
+.route-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.route-card {
+  display: grid;
+  gap: 18px;
+  align-content: space-between;
+  min-height: 174px;
+  padding: 16px;
+  background:
+    linear-gradient(135deg, rgba(17, 24, 39, 0.94), rgba(31, 88, 55, 0.90)),
+    var(--track);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #ffffff;
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.16);
+}
+
+.route-card span {
+  color: #fdba74;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.route-card h3 {
+  margin-top: 8px;
+  font-size: 20px;
+}
+
+.route-card p {
+  margin: 8px 0 0;
+  color: #d1fae5;
+  line-height: 1.5;
+}
+
+.route-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.route-card-foot a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: #111827;
+  background: #ffedd5;
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.route-credit {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.spin-icon {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .plant-photo-frame {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 10;
+  }
+
+  .route-search {
+    grid-template-columns: 1fr;
+  }
+}
+

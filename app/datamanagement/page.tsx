@@ -1,5 +1,7 @@
 import { choosePlant, deleteRunLog, harvestPlant, signOut } from "@/app/actions";
 import { RunForm } from "@/components/run-form";
+import { RunningRouteFinder } from "@/components/running-route-finder";
+import { coverPhotoForPlant, photoForPlantStage } from "@/lib/plant-photos";
 import {
   PLANTS,
   calculateGrowth,
@@ -71,6 +73,7 @@ export default async function DataManagementPage({
   const goalDistance = growthGoalForPlant(currentPlant);
   const remainingDistance = Math.max(0, goalDistance - distanceAfterHarvest);
   const canHarvest = growthPercent >= 100;
+  const stagePhoto = photoForPlantStage(currentPlant, growthPercent);
   const avgPace =
     totalDistance > 0 ? logs.reduce((sum, log) => sum + Number(log.duration_min || 0), 0) / totalDistance : 0;
 
@@ -133,7 +136,14 @@ export default async function DataManagementPage({
             <h2>{currentPlant} 성장 단계</h2>
           </div>
           <div className="plant-stage">
-            <img src="/plant-growth.svg" alt="" />
+            <figure className="plant-photo-frame">
+              <img className="plant-stage-photo" src={stagePhoto.src} alt={`${currentPlant} ${growthStage(growthPercent)} 사진`} />
+              <figcaption>
+                <a href={stagePhoto.source} target="_blank" rel="noreferrer">
+                  {stagePhoto.credit}
+                </a>
+              </figcaption>
+            </figure>
             <div>
               <strong>{growthStage(growthPercent)}</strong>
               <p>
@@ -177,6 +187,8 @@ export default async function DataManagementPage({
         </article>
       </section>
 
+      <RunningRouteFinder />
+
       <section className="panel">
         <div className="panel-heading inline">
           <div>
@@ -186,24 +198,29 @@ export default async function DataManagementPage({
           <span className="soft-pill">식물별 러닝 기록 분리</span>
         </div>
         <div className="select-grid">
-          {PLANTS.map((plantOption) => (
-            <form key={plantOption.name} action={choosePlant}>
-              <input type="hidden" name="plant_name" value={plantOption.name} />
-              <button
-                className={`select-card ${plantOption.name === currentPlant ? "active" : ""}`}
-                type="submit"
-                style={{ "--plant": plantOption.color } as React.CSSProperties}
-              >
-                <span className="plant-dot" />
-                <strong>{plantOption.name}</strong>
-                <small>{plantOption.requirement}</small>
-                <em>
-                  성장 {Math.round(growthByPlant.get(plantOption.name) ?? 0)}% · 수확{" "}
-                  {harvestByPlant.get(plantOption.name) ?? 0}회
-                </em>
-              </button>
-            </form>
-          ))}
+          {PLANTS.map((plantOption) => {
+            const plantPhoto = coverPhotoForPlant(plantOption.name);
+
+            return (
+              <form key={plantOption.name} action={choosePlant}>
+                <input type="hidden" name="plant_name" value={plantOption.name} />
+                <button
+                  className={`select-card photo-select-card ${plantOption.name === currentPlant ? "active" : ""}`}
+                  type="submit"
+                  style={{ "--plant": plantOption.color } as React.CSSProperties}
+                >
+                  <img className="select-card-photo" src={plantPhoto.src} alt="" />
+                  <span className="plant-dot" />
+                  <strong>{plantOption.name}</strong>
+                  <small>{plantOption.requirement}</small>
+                  <em>
+                    성장 {Math.round(growthByPlant.get(plantOption.name) ?? 0)}% · 수확{" "}
+                    {harvestByPlant.get(plantOption.name) ?? 0}회
+                  </em>
+                </button>
+              </form>
+            );
+          })}
         </div>
       </section>
 
